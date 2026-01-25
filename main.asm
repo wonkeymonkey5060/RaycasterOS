@@ -31,31 +31,33 @@ gdt_descriptor:
     dw gdt_end - gdt_start - 1 ; Size of the GDT (16-bit)
     dd gdt_start               ; Address of the GDT (32-bit)
 	
-start: ;Entry point into the "actual program"
-	mov ax, 0x0013 ; Sets the video mode to 13h (320x200 pixels, 256 colors)
-    int 0x10 ; Sets video mode to the one specified in AX
-	
-	
-    mov ax, 0xA000  ; start of vram in memory
-    mov es, ax      ; 'es' is the Extra Segment, we point it to video RAM
-    xor di, di      ; di = 0 (start of screen)
-    mov al, 2       ; Color index 1 is usually blue
-    mov cx, 64000   ; 320 * 200 = 64,000 total pixels
-    rep stosb       ; This repeats "store byte in AL at ES:DI" 64,000 times
+start:
+    cli             ; 1. KILL INTERRUPTS. This is non-negotiable for PM switch.
+    
+    xor ax, ax      ; 2. Ensure DS is 0 so the GDT address is absolute
+    mov ds, ax
+    mov es, ax      ; ES was used for VRAM, but we need it for STOSB below
 
-    ; 3. Draw a single white pixel in the middle
-    mov di, (320 * 100) + 160 ; (Row * Width) + Column
-    mov byte [es:di], 15      ; Color index 15 is white
-	
-	lgdt [gdt_descriptor] ;specify where the gdt descriptor is
-	
-	;   Switch on "protected mode"
-	mov eax, cr0
-    or eax, 1        ; Set the first bit (PE - Protection Enable) to 1
+    ; --- Video Mode Code ---
+    mov ax, 0x0013 
+    int 0x10 
+
+    ; --- Screen Clear Code ---
+    mov ax, 0xA000  
+    mov es, ax      
+    xor di, di      
+    mov al, 2       
+    mov cx, 64000   
+    rep stosb       
+
+    ; --- Switch to Protected Mode ---
+    lgdt [gdt_descriptor] 
+    
+    mov eax, cr0
+    or eax, 1        
     mov cr0, eax
-	
-	;jump to the entry point into protected mode
-    jmp 0x08:start_32
+    
+    jmp 0x08:start_32 ; The "Far Jump" to flush the pipeline
 
 [bits 32]
 %define backBuffer 0x20000  ; back buffer, directly edited
@@ -74,6 +76,9 @@ start_32:
 	
 	mov ebp, 0x90000   ; Set the Base of the stack
 	mov esp, ebp       ; Set the Top (current pointer) to the same spot
+	
+	mov dword [playerData], 10
+	mov dword [playerData+4], 2
 
 mainLoop:
 	
@@ -82,21 +87,31 @@ mainLoop:
 	
 	jnz .run ; if test is true (result is 1), runs the rendering sequence
 	; if test is false, test again
-	call .blastBuffer
+	call blastBuffer
 	jmp mainLoop ; 
 	
 .run:
+	call poll_key  ; gets keyboard input code (if any)
+	cmp al, 0
+	jz .skip_key_cases
+	call key_cases
+.skip_key_cases:
 	
-	call clearScreen
+	call clearScreen ; fills back buffer with a color
+	
 	mov ecx, 8
 	mov edx, 8
 	call drawPixel ; drawPixel(ecx, edx)  sets color of a pixel at coordinates
-	mov ecx, 0
-	mov edx, 0
-	call drawPlayer
+	
+	
+	mov ecx, [playerData]
+	mov edx, [playerData+4]
+	call drawPlayer ; draws a 2x2 square at (ecx,edx) assuming (0, 0) is center of the screen
 	jmp mainLoop ; go back to mainLoop 
+	
 
-.blastBuffer: ; draws backBuffer onto main vram buffer
+
+blastBuffer: ; draws backBuffer onto main vram buffer
 	mov esi, backBuffer  ; source address
 	mov edi, frontBuffer ; destination adress
 	mov ecx, 16000       ; number of doublewords to copy
@@ -128,7 +143,7 @@ drawPlayer:  ;   drawPlayer( player.x ECX,  player.y EDX )
 	cmp eax, 319
 	jg .offScreen
 	
-	cmp ebx, 199
+	;cmp ebx, 199
 	;jge .offScreen
 	
 	; if on screen:
@@ -179,6 +194,61 @@ check_retrace:
 	mov ax, 1
 	ret
 	
+
+poll_key:
+	in al, 0x64  ; key status port
+	test al, 1
+	jz .no_key
+	in al, 0x60
+	ret
+.no_key:
+	xor al, al
+	ret
+	
+
+key_cases:
+
+	cmp al, 0x11 ; test for W make code
+	jnz .skipMakeW_key_cases
+	call key_W_press
+.skipMakeW_key_cases:
+
+	cmp al, 0x1F ; test for S make code
+	jnz .skipMakeS_key_cases
+	call key_S_press
+.skipMakeS_key_cases:
+
+	cmp al, 0x1E ; test for A make code
+	jnz .skipMakeA_key_cases
+	call key_A_press
+.skipMakeA_key_cases:
+
+	cmp al, 0x20 ; test for D make code
+	jnz .skipMakeD_key_cases
+	call key_D_press
+.skipMakeD_key_cases:
+	ret
+
+key_W_press:
+	mov ebx, [playerData+4]
+	sub ebx, 5
+	mov [playerData+4], ebx
+	ret
+key_S_press:
+	mov ebx, [playerData+4]
+	add ebx, 5
+	mov [playerData+4], ebx
+	ret
+key_A_press:
+	mov ebx, [playerData]
+	sub ebx, 5
+	mov [playerData], ebx
+	ret
+key_D_press:
+	mov ebx, [playerData]
+	add ebx, 5
+	mov [playerData], ebx
+	ret
 
 
 ; precomputed sine table:
@@ -447,4 +517,4 @@ sin_table:
 	
 	
 	
-
+times 512 - (($ - $$) % 512) db 0

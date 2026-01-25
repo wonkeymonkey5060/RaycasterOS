@@ -1,42 +1,73 @@
-[bits 16]           ; We start in 16-bit "Real Mode" (PC standard)
-[org 0x7c00]        ; BIOS always loads bootloaders to this address
+[bits 16]
+[org 0x7c00]
 
-; The code here is the "Entry Point" for the "Operating System"
-;
-; It can only be 512 bytes and must start at 0x7c00 in memory,
-; as that is where the BIOS looks for the entry point we
-; immediately exit this and move to 0x8000 to have access
-; to more memory.
+; 1. Fix: Mandatory Jump and BPB Area
+; Some BIOSes overwrite bytes 3-60 with drive geometry. 
+; If your code is there, the BIOS will corrupt it.
+jmp short start
+nop
+times 33 db 0      ; Reserve space for the BPB (Standard for MBR)
 
-jmp entry ; skip to entry: and not run anything in between as "code"
-
-; variables
 BOOT_DRIVE: db 0
 
-entry:
-	cli
-	mov [BOOT_DRIVE], dl   ; Save drive id BIOS gives us
-	
-	mov bp, 0x9000 ; sets the stack base to 0x90000
-	mov sp, bp
-	
-	; Call the BIOS to load Stage 2  (copied code)
-    mov ah, 0x02            ; Read function
-    mov al, 80               ; Number of sectors to read (512 bytes each)
-    mov cl, 2               ; Start at Sector 2
-    mov ch, 0               ; Cylinder 0
-    mov dh, 0               ; Head 0
-    mov dl, [BOOT_DRIVE]    ; From our boot drive
-    mov bx, 0x8000          ; Put it at this address
-    int 0x13                ; BIOS DISK INTERRUPT
-	
-	
-	jmp 0x8000              ; JUMP TO STAGE 2!
-	
-	
+start:
+    ; 2. Fix: Explicitly zero out segments
+    ; You fixed CS with the jump, but DS and ES could be anything.
+    ; If DS is wrong, 'mov [BOOT_DRIVE], dl' will save to the wrong RAM address.
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7c00  ; Standard safe stack location
+    
+    mov [BOOT_DRIVE], dl
 
-; The Bootloader "Signature"
-times 510-($-$$) db 0 ; Fill the rest of the 512 bytes with zeros
-dw 0xaa55             ; The magic number that tells BIOS "this is bootable"
-; it ensures that the code is exactly 512 bytes.
+    ; 3. Fix: Reset Disk Controller
+    ; Real hardware often needs a 'kick' before it reads correctly.
+    xor ah, ah
+    int 0x13
 
+    ; 4. Load Stage 2
+    mov ah, 0x02
+    mov al, 4
+    mov ch, 0
+    mov cl, 2
+    mov dh, 0
+    mov dl, [BOOT_DRIVE]
+    mov bx, 0x8000
+    int 0x13
+    jc disk_error
+
+    ; Enable A20 (Fast Method)
+    in al, 0x92
+    or al, 2
+    out 0x92, al
+
+    ; Far jump to Stage 2
+    jmp 0x0000:0x8000
+
+disk_error:
+    ; Visual feedback: Make the screen red so you know it failed
+    mov ax, 0x0013
+    int 0x10
+    mov ax, 0xa000
+    mov es, ax
+    mov byte [es:0], 4 ; Red pixel
+    jmp $
+
+; 5. Fix: Dummy Partition Table
+; This is the #1 reason for "Insert boot media" on laptops.
+; We must place this starting at offset 446 (0x1BE).
+times 446-($-$$) db 0
+
+db 0x80 ; Partition 1: Active/Bootable
+db 0, 1, 0 ; Start CHS
+db 0x01 ; Type
+db 0, 1, 0 ; End CHS
+dd 0 ; Start LBA
+dd 2880 ; Total sectors
+
+; Pad the rest of the MBR
+times 510-($-$$) db 0
+dw 0xAA55

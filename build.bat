@@ -23,5 +23,5 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [OK] boot.bin created.
-qemu-system-x86_64 -drive format=raw,file="%ROOT%RaycasterOS.bin"
+qemu-system-x86_64 -drive file=RaycasterOS.bin,format=raw,if=ide
 pause
