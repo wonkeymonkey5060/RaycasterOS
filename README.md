@@ -1,14 +1,11 @@
-A work-in-progress bare-metal assembly raycaster engine
-The bootloader currently loads 100 disk sectors
-containing the kernel.  
+A work-in-progress bare-metal assembly raycaster rendering engine
+The bootloader currently loads 4 disk sectors containing the rest of the code for the engine
   
-Current features include:  
-<<<<<<< HEAD
 	- Front buffer and back buffer system  
 	- Game loop in protected-mode  
-=======
-    - Front buffer and back buffer system  
-    - Game loop in protected-mode  
+	- Keyboard polling  
+	- Movable player position using WASD keys  
 
-In order to test this you should have qemu installed and added to PATH, then run build.bat.
->>>>>>> 91aada778a5eab02c5971a9df3eb04f2887f232e
+
+In order to test this you should have qemu installed and added to PATH, then run build.bat.  
+
