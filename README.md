@@ -3,5 +3,12 @@ The bootloader currently loads 100 disk sectors
 containing the kernel.  
   
 Current features include:  
+<<<<<<< HEAD
 	- Front buffer and back buffer system  
 	- Game loop in protected-mode  
+=======
+    - Front buffer and back buffer system  
+    - Game loop in protected-mode  
+
+In order to test this you should have qemu installed and added to PATH, then run build.bat.
+>>>>>>> 91aada778a5eab02c5971a9df3eb04f2887f232e
