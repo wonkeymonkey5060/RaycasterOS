@@ -27,14 +27,14 @@ start:
     int 0x13
 
     ; Load Stage 2
-    mov ah, 0x02
+    mov ah, 0x02  ;  sets function (read sectors)
     mov al, 4    ; Number of sectors to load
-    mov ch, 0
-    mov cl, 2
-    mov dh, 0
-    mov dl, [BOOT_DRIVE]
+    mov ch, 0    ; set to 0
+    mov cl, 2    ; start by loading sector 2
+    mov dh, 0    ; set to 0
+    mov dl, [BOOT_DRIVE]  ; drive number
     mov bx, 0x8000
-    int 0x13
+    int 0x13            ; INT 0x13, AH=0x02 -> load sectors
     jc disk_error
 
     ; Enable A20
