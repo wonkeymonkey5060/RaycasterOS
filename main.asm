@@ -88,12 +88,13 @@ start_32:
 	mov dword [playerData+4], 0
 	
 	fild dword [playerData]
+	;fiadd dword [constneg4]
 	fstp dword [playerData]
 	
 	fild dword [playerData+4]
 	fstp dword [playerData+4]
 	
-	mov dword [playerData+8], 640
+	mov dword [playerData+8], 160
 
 mainLoop:
 	
@@ -106,6 +107,8 @@ mainLoop:
 	jmp mainLoop ; 
 	
 .run:
+
+	xor eax, eax
 	call poll_key  ; gets keyboard input code (if any)
 	cmp al, 0
 	jz .skip_key_cases
@@ -148,8 +151,78 @@ mainLoop:
 	
 	call drawPixel
 	
+	call line_draw_loop
+	
 	jmp mainLoop ; go back to mainLoop 
 
+line_draw_loop:
+	push ebp
+	mov ebp, esp
+	sub esp, 32
+	xor ecx, ecx
+	;sub ecx, 1
+.loop:
+	cmp ecx, 320
+	jge .end
+	
+	mov dword ebx, [lines + ecx*4]
+	mov [ebp-4], ecx
+	fild dword [ebp-4]
+	fisub dword [const160]
+	fidiv dword [const320]
+	fldpi
+	fmulp
+	fidiv dword [const2]
+	fcos
+	fmul dword [constpoint8]
+	fmul dword [lines + ecx*4]
+	
+	fistp [ebp-8]
+	
+	mov ebx, 80
+	sub dword ebx, [ebp-8]
+	
+	
+	
+	call drawColumn
+	
+	add ecx, 1
+	jmp .loop
+.end:
+	mov esp, ebp
+	pop ebp
+	ret
+	
+drawColumn:
+	push ebp
+	mov ebp, esp
+	sub esp, 32
+	
+	
+	xor eax, eax
+	add eax, ebx
+	mov [ebp-4], eax
+	xor eax, eax
+	sub eax, ebx
+	
+.loop:
+	cmp eax, [ebp-4]
+	jg .end
+	
+	mov edx, 0
+	add edx, eax
+	add edx, 100
+	
+	mov ebx, 33
+	
+	call drawPixel
+	
+	add eax, 1
+	jmp .loop
+.end:
+	mov esp, ebp
+	pop ebp
+	ret
 
 ray_gen_loop:  ;  FOV  1280 units = 360 degrees, 512 units = 90 degrees
 	push ebp
@@ -157,8 +230,8 @@ ray_gen_loop:  ;  FOV  1280 units = 360 degrees, 512 units = 90 degrees
 	sub esp, 32
 	mov [ebp-4], 160   ; half of fov must be moved here
 	mov [ebp-8], dword 0
-	mov ecx, [playerData]  	; eye pos (x)
-	mov edx, [playerData+4]  ; eye pos (y)
+	;mov ecx, [playerData]  	; eye pos (x)
+	;mov edx, [playerData+4]  ; eye pos (y)
 	
 	
 	mov eax, [ebp-8]
@@ -169,6 +242,8 @@ ray_gen_loop:  ;  FOV  1280 units = 360 degrees, 512 units = 90 degrees
 	mov eax, 0
 	sub eax, 160  ; subtract half of fov
 	add eax, [playerData+8]
+	mov [esp-16], 0
+	mov edx, 0
 	
 	
 	
@@ -179,8 +254,13 @@ ray_gen_loop:  ;  FOV  1280 units = 360 degrees, 512 units = 90 degrees
 .loop:
 	cmp eax, [ebp-8] ; end loop if our ray angle offset counter is
 	jge .endLoop   ; greater than the max set at [esp + 0]
+	
 	call per_ray_loop
-	add eax, 1 ; move next ray 2 angle units "right"
+	
+	add eax, 1 ; move next ray 1 angle units "right"
+	add edx, 1
+	
+	
 	jmp .loop
 	
 .endLoop:
@@ -194,10 +274,12 @@ per_ray_loop:
 	push ebp
 	mov ebp, esp
 	sub esp, 96
-	
+	mov [ebp-16], edx
 	push ecx
 	push edx
 	push eax
+	
+	xor edx, edx
 	
 	
 	
@@ -213,15 +295,14 @@ per_ray_loop:
 	; puts cos(st0) into st0, puts sin(st0) into st1
 	fsincos
 	;fimul dword [const90]
-	fistp dword [ebp-36]
-	fistp dword [ebp-40]
+	fstp dword [ebp-36]
+	fstp dword [ebp-40]
 
 
 	
 	; [ebp-36] is for x component of ray vector 
 	; [ebp-40] is for y component of ray vector
-	mov [ebp-36], ecx  
-	mov [ebp-40], edx   
+
 	
 	; [ebp-44] is for x component of wall AB vector
 	; [ebp-48] is for y component of wall AB vector
@@ -242,34 +323,52 @@ wall_loop: ;edx is wall counter
 	cmp edx, [numWalls]
 	jge .end_loop
 	
+	shl edx, 4
 	
 	
-	fld dword [Map+edx*2]
-	fld dword [Map+edx*2 + 8]
-	fsubp
+	fld dword [Map+edx]
+	fld dword [Map+edx + 8]
+	fsubp st1, st0
 	fstp dword [ebp-44]        ;moves non-normalized vector A --> B into [ebp-44]  (x component)
 	
-	fld dword [Map+edx*2 + 4]
-	fld dword [Map+edx*2 + 12]
-	fsubp
+	fld dword [Map+edx + 4]
+	fld dword [Map+edx + 12]
+	fsubp st1, st0
 	fstp dword [ebp-48]        ;moves non-normalized vector A --> B into [ebp-48]  (y component)
 	
 	
 	
 	fld dword [playerData]     ;moves non-normalized vector Player --> A into [ebp-52]  (x component)
-	fld dword [Map+edx*2]
-	fsubp
+	fld dword [Map+edx]
+	fsubp st1, st0
 	fstp dword [ebp-52]
 	
 	fld dword [playerData+4]   ;moves non-normalized vector Player --> A into [ebp-56]  (y component)
-	fld dword [Map+edx*2 + 4]
-	fsubp
+	fld dword [Map+edx + 4]
+	fsubp st1, st0
 	fstp dword [ebp-56]
 	
 	
 	call ray_per_wall_test
 	
+	shr edx, 4
 	add edx, 1
+	
+	cmp ebx, 1
+
+	jz .setColumn
+	
+	jmp wall_loop
+.setColumn:
+	mov ebx, [ebp-16]
+	mov [ebp-8], ecx
+	fld [ebp-8]
+	fimul [const20]
+	fstp [ebp-8]
+	mov ecx, [ebp-8]
+	mov dword [lines+ebx*4], ecx
+
+	jmp wall_loop
 .end_loop:
 	ret
 
@@ -332,13 +431,22 @@ ray_per_wall_test: ; returns 0 in ebx if no intersect, returns 1 in ebx if yes i
 	
 	
 .TGZ:
+	fld dword [constMaxRayDistance]
+	fld dword [ebp-72]  ; t at st0, maxray at st1
+	fcomi st0, st1
+	fstp st0
+	fstp st0
+	jb .TLM
+
+	jmp .no_intersection
+.TLM:  ; if t is less than max distance (50)
 	fldz
 	fld dword [ebp-76]
 	fcomi st0, st1
 	fstp st0
 	fstp st0
 	jae .UGZ
-	
+
 	jmp .no_intersection
 .UGZ:
 	fld1
@@ -351,6 +459,8 @@ ray_per_wall_test: ; returns 0 in ebx if no intersect, returns 1 in ebx if yes i
 	jmp .no_intersection
 .pass:
 	mov ebx, 1
+	fld dword [ebp-72]
+	
 	mov dword ecx, [ebp-72]
 	ret
 	
@@ -366,13 +476,25 @@ ray_per_wall_test: ; returns 0 in ebx if no intersect, returns 1 in ebx if yes i
 sineTableScale dd -14.0
 
 const2 dd 2
+constneg4 dd -4
 const90 dd 90
 const320 dd 320
+const20 dd 3
+const160 dd 160
+constpoint5 dd 0.5
+const4 dd 4
+constpoint8 dd 0.8
 
-numWalls dd 2
+constMaxRayDistance dd 20.0
+
+numWalls dd 6
 Map:
 dd -10.0, 10.0, -2.0, 10.0
 dd 2.0, 10.0, 10.0, 10.0
+dd -10.0, 10.0, -10.0, -10.0
+dd -10.0, -10.0, 10.0, -10.0
+dd 10.0, 10.0, 10.0, -10.0
+dd -15.0, 20.0, 15.0, 12.0
 
 lines: times 320 dd 0
 
@@ -383,8 +505,8 @@ lines: times 320 dd 0
 
 
 
-%include "sine_table.asm"
-	
+
+
 
 	
-times 512 - (($ - $$) % 512) db 0
+times 3072 - (($ - $$) % 512) db 0 ;ensures file is 6 sectors long

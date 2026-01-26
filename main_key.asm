@@ -33,22 +33,23 @@ key_cases:
 	ret
 
 key_W_press:
-	mov ebx, [playerData+4]
-	sub ebx, 5
-	mov [playerData+4], ebx
+	fld dword [playerData+4]
+	fsub dword [constpoint5]
+	fstp dword [playerData+4]
 	ret
 key_S_press:
-	mov ebx, [playerData+4]
-	add ebx, 5
-	mov [playerData+4], ebx
+	fld dword [playerData+4]
+	fadd dword [constpoint5]
+	fstp dword [playerData+4]
 	ret
 key_A_press:
-	mov ebx, [playerData]
+	mov ebx, [playerData+8]
 	sub ebx, 5
-	mov [playerData], ebx
+	mov [playerData+8], ebx
 	ret
 key_D_press:
-	mov ebx, [playerData]
+	mov ebx, [playerData+8]
 	add ebx, 5
-	mov [playerData], ebx
+	mov [playerData+8], ebx
 	ret
+
