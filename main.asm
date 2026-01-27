@@ -267,12 +267,13 @@ wall_loop: ;edx is wall counter
 	fstp dword [ebp-56]
 	
 	
+	call ray_per_wall_test
 	
 	add edx, 1
 .end_loop:
 	ret
 
-ray_per_wall_test: ; returns 0 in ebx if no intersect, returns 1 in ebx if yes intersect, returns distance in eax
+ray_per_wall_test: ; returns 0 in ebx if no intersect, returns 1 in ebx if yes intersect, returns distance in ecx
 	fld dword [ebp-36]  ; Rx
 	fld dword [ebp-48]  ; Wy
 	fmulp
@@ -316,10 +317,42 @@ ray_per_wall_test: ; returns 0 in ebx if no intersect, returns 1 in ebx if yes i
 	fsubp
 	fld dword [ebp-68]
 	fdivp st1, st0
-	fstp dword [ebp-72]  ; u = (Px*Ry - Py*Rx)/denom
+	fstp dword [ebp-76]  ; u = (Px*Ry - Py*Rx)/denom
 	
-	; if t >- 0 and 0 <= u <= 1:
-	;fld dword [ebp-72]
+	; if t >= 0 and 0 <= u <= 1:
+	fldz
+	fld dword [ebp-72]
+	fcomi st0, st1
+	fstp st0
+	fstp st0
+	
+	jae .TGZ
+	
+	jmp .no_intersection
+	
+	
+.TGZ:
+	fldz
+	fld dword [ebp-76]
+	fcomi st0, st1
+	fstp st0
+	fstp st0
+	jae .UGZ
+	
+	jmp .no_intersection
+.UGZ:
+	fld1
+	fld dword [ebp-76]
+	fcomi st0, st1
+	fstp st0
+	fstp st0
+	jbe .pass
+	
+	jmp .no_intersection
+.pass:
+	mov ebx, 1
+	mov dword ecx, [ebp-72]
+	ret
 	
 	
 .no_intersection:
