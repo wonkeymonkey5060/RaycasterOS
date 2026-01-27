@@ -54,8 +54,7 @@ disk_error:
     mov byte [es:0], 4 ; Red pixel
     jmp $
 
-; 5. Fix: Dummy Partition Table
-; This is the #1 reason for "Insert boot media" on laptops.
+; Dummy Partition Table 
 ; We must place this starting at offset 446 (0x1BE).
 times 446-($-$$) db 0
 

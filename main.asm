@@ -193,7 +193,7 @@ per_ray_loop:
 	finit
 	push ebp
 	mov ebp, esp
-	sub esp, 80
+	sub esp, 96
 	
 	push ecx
 	push edx
@@ -213,22 +213,13 @@ per_ray_loop:
 	; puts cos(st0) into st0, puts sin(st0) into st1
 	fsincos
 	;fimul dword [const90]
-	fistp dword [ebp-20]
-	fimul dword [const90]
-	;fistp dword [ebp-28] ; move st0 into [ebp-32] and pop it
-	mov ecx, [ebp-28]    ; move our angle in radians to ecx
-	mov edx, [ebp-20]
+	fistp dword [ebp-36]
+	fistp dword [ebp-40]
 
-	add edx, 100
-	add ecx, 160
-	mov ebx, 89
-	call drawPixel ; draw pixel at (ecx, edx)
-	
-	mov ecx, [ebp-28]
-	mov edx, [ebp-20]
+
 	
 	; [ebp-36] is for x component of ray vector 
-	; [ebp-40] is for x component of ray vector
+	; [ebp-40] is for y component of ray vector
 	mov [ebp-36], ecx  
 	mov [ebp-40], edx   
 	
@@ -252,24 +243,91 @@ wall_loop: ;edx is wall counter
 	jge .end_loop
 	
 	
-	xor eax, eax
-	xor ebx, ebx
-	mov eax, [Map+edx*2]
-	mov ebx, [Map+edx*2 + 8]
-	sub ebx, eax
-	mov [ebp-44], ebx
 	
-	xor eax, eax
-	xor ebx, ebx
-	mov eax, [Map+edx*2 + 4]
-	mov ebx, [Map+edx*2 + 12]
-	sub ebx, eax
-	mov [ebp-48], ebx
+	fld dword [Map+edx*2]
+	fld dword [Map+edx*2 + 8]
+	fsubp
+	fstp dword [ebp-44]        ;moves non-normalized vector A --> B into [ebp-44]  (x component)
+	
+	fld dword [Map+edx*2 + 4]
+	fld dword [Map+edx*2 + 12]
+	fsubp
+	fstp dword [ebp-48]        ;moves non-normalized vector A --> B into [ebp-48]  (y component)
+	
+	
+	
+	fld dword [playerData]     ;moves non-normalized vector Player --> A into [ebp-52]  (x component)
+	fld dword [Map+edx*2]
+	fsubp
+	fstp dword [ebp-52]
+	
+	fld dword [playerData+4]   ;moves non-normalized vector Player --> A into [ebp-56]  (y component)
+	fld dword [Map+edx*2 + 4]
+	fsubp
+	fstp dword [ebp-56]
+	
+	
+	
 	add edx, 1
 .end_loop:
 	ret
 
-ray_per_wall_test: ; returns 0 in rbx if no intersect, returns 1 if yes intersect
+ray_per_wall_test: ; returns 0 in ebx if no intersect, returns 1 in ebx if yes intersect, returns distance in eax
+	fld dword [ebp-36]  ; Rx
+	fld dword [ebp-48]  ; Wy
+	fmulp
+	fstp dword [ebp-60] ; Rx*Wy
+	
+	fld dword [ebp-40] ; Ry
+	fld dword [ebp-44] ; Wx
+	fmulp
+	fstp dword [ebp-64] ; Ry*Wx
+	
+	fld dword [ebp-60] ; Rx*Wy
+	fld dword [ebp-64] ; Ry*Wx
+	fsubp
+	fst dword [ebp-68] ; Rx*Wy-Ry*Wx  (denom)
+	
+	
+	fldz
+	fcomi st0, st1  ; compare Rx*Wy-Ry*Wx (denom) and 0, if equal, there is no intersection
+	fstp st0
+	fstp st0
+	
+	je .no_intersection
+	
+	fld dword [ebp-52]
+	fld dword [ebp-48]
+	fmulp
+	fld dword [ebp-56]
+	fld dword [ebp-44]
+	fmulp
+	fsubp
+	fld dword [ebp-68]
+	fdivp st1, st0
+	fstp dword [ebp-72]   ; t = (Px*Wy - Py*Wx)/denom
+	
+	fld dword [ebp-52]
+	fld dword [ebp-40]
+	fmulp
+	fld dword [ebp-56]
+	fld dword [ebp-36]
+	fmulp
+	fsubp
+	fld dword [ebp-68]
+	fdivp st1, st0
+	fstp dword [ebp-72]  ; u = (Px*Ry - Py*Rx)/denom
+	
+	; if t >- 0 and 0 <= u <= 1:
+	;fld dword [ebp-72]
+	
+	
+.no_intersection:
+	mov ebx, 0
+	mov ecx, 0
+	ret
+
+	
 	
 	
 sineTableScale dd -14.0
@@ -280,8 +338,8 @@ const320 dd 320
 
 numWalls dd 2
 Map:
-dd -10, 10, -2, 10
-dd 2, 10, 10, 10
+dd -10.0, 10.0, -2.0, 10.0
+dd 2.0, 10.0, 10.0, 10.0
 
 lines: times 320 dd 0
 
