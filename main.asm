@@ -68,6 +68,12 @@ start:
 
 %define playerData 0x30000  ; dd player.x dd player.y
 start_32:
+	; --- ENABLE FPU ---
+    mov eax, cr0
+    and ax, 0xFFFB      ; Clear the TS (Task Switched) bit
+    or ax, 0x2          ; Set the MP (Monitor Coprocessor) bit
+    mov cr0, eax
+    finit               ; Safely initialize it
 	mov ax, 0x10
 	mov ds, ax 
 	mov ss, ax
@@ -77,8 +83,17 @@ start_32:
 	mov ebp, 0x90000   ; Set the Base of the stack
 	mov esp, ebp       ; Set the Top (current pointer) to the same spot
 	
-	mov dword [playerData], 10
-	mov dword [playerData+4], 2
+	
+	mov dword [playerData], 0
+	mov dword [playerData+4], 0
+	
+	fild dword [playerData]
+	fstp dword [playerData]
+	
+	fild dword [playerData+4]
+	fstp dword [playerData+4]
+	
+	mov dword [playerData+8], 640
 
 mainLoop:
 	
@@ -110,53 +125,63 @@ mainLoop:
 	
 	call ray_gen_loop
 	
-	jmp mainLoop ; go back to mainLoop 
+	; wall visualisers
 	
+	xor ecx, ecx
+	xor edx, edx
+	mov dword ecx, [Map]
+	mov dword edx, [Map+4]
+	imul ecx, 8
+	add ecx, 160
+	imul edx, -8
+	add edx, 100
+	
+	call drawPixel
+	xor ecx, ecx
+	xor edx, edx
+	mov dword ecx, [Map+8]
+	mov dword edx, [Map+12]
+	imul ecx, 8
+	add ecx, 160
+	imul edx, -8
+	add edx, 100
+	
+	call drawPixel
+	
+	jmp mainLoop ; go back to mainLoop 
 
-ray_gen_loop:
+
+ray_gen_loop:  ;  FOV  1280 units = 360 degrees, 512 units = 90 degrees
 	push ebp
 	mov ebp, esp
 	sub esp, 32
-	mov [esp], dword 512 ; FOV  2048 units = 360 degrees, 512 units = 90 degrees
-	mov ecx, 20  ; eye pos (x)
-	mov edx, 50  ; eye pos (y)
-	mov eax, 0  ; angle offset counter
+	mov [ebp-4], 160   ; half of fov must be moved here
+	mov [ebp-8], dword 0
+	mov ecx, [playerData]  	; eye pos (x)
+	mov edx, [playerData+4]  ; eye pos (y)
 	
-	; [sineTableScale] just holds the scaling of all the fixed point integers
-	; we divide by it in the fpu to turn integer into floats
 	
-	fld dword [sineTableScale] ; st0, will be pushed to st1 by next line
-	fild dword [ecx]  ; loads player x (ecx) into fpu register st0 as an integer
-	fscale          ; "un-scales" the players x coordinate
+	mov eax, [ebp-8]
+	add eax, 160
+	add eax, [playerData+8]
+	mov [ebp-8], eax
 	
-	fld dword [sineTableScale] ; st0, will be pushed to st1 by next line
-	fild dword [ecx]  ;loads player y (edx) into fpu register st0 as an integer
-	fscale          ;"un-scales" the players y coordinate
+	mov eax, 0
+	sub eax, 160  ; subtract half of fov
+	add eax, [playerData+8]
 	
-	; players x float in st2, y is in st0
+	
+	
+	
 	
 	
 	
 .loop:
-	cmp eax, [esp] ; end loop if our ray angle offset counter is
+	cmp eax, [ebp-8] ; end loop if our ray angle offset counter is
 	jge .endLoop   ; greater than the max set at [esp + 0]
-	
-	
-	
-	fxch st2
-	fst dword [ebp-8] ;stores ray start y 8 bytes from stack frame base
-	fxch st2 
-	fst dword [ebp-12] ;stores ray start x 12 bytes from stack frame base
-	
-	fld dword [sineTableScale]
-	fld dword [sine_table + 50]
-	fscale  ; sine of 50 angle units in st0
-	
-	fst dword [ebp-16] ; stores sine of the ray angle 16 bytes from stack frame base
-	
 	call per_ray_loop
-	
-	add eax, 2 ; move next ray 2 angle units "right"
+	add eax, 1 ; move next ray 2 angle units "right"
+	jmp .loop
 	
 .endLoop:
 	mov esp, ebp
@@ -165,29 +190,100 @@ ray_gen_loop:
 	ret
 	
 per_ray_loop:
-	fld dword [ebp-8]
-	fld dword [ebp-12]
+	finit
 	push ebp
 	mov ebp, esp
-	sub esp, 32
+	sub esp, 80
 	
+	push ecx
+	push edx
 	push eax
-	fistp dword [ebp-8]
-	fistp dword [ebp-16]
 	
-	mov ecx, [ebp-8]
-	mov edx, [ebp-16]
-	call drawPixel
+	
+	
+	
+	; converts units (320 units = 90 degrees) to degrees
+	mov [ebp-32], eax   ; puts ray number in eax
+	fild dword [ebp-32] ; puts ray number (eax) in st0
+	fidiv dword [const320] ; divides it by 320
+	fldpi ; st0 --> st1, pi goes into st0
+	fmulp ; multiplies st0 and st1, into st1, pops st0
+	fidiv dword [const2] ; divides st0 by 2. now, the ray angle in radians, is in st0
+	
+	; puts cos(st0) into st0, puts sin(st0) into st1
+	fsincos
+	;fimul dword [const90]
+	fistp dword [ebp-20]
+	fimul dword [const90]
+	;fistp dword [ebp-28] ; move st0 into [ebp-32] and pop it
+	mov ecx, [ebp-28]    ; move our angle in radians to ecx
+	mov edx, [ebp-20]
+
+	add edx, 100
+	add ecx, 160
+	mov ebx, 89
+	call drawPixel ; draw pixel at (ecx, edx)
+	
+	mov ecx, [ebp-28]
+	mov edx, [ebp-20]
+	
+	; [ebp-36] is for x component of ray vector 
+	; [ebp-40] is for x component of ray vector
+	mov [ebp-36], ecx  
+	mov [ebp-40], edx   
+	
+	; [ebp-44] is for x component of wall AB vector
+	; [ebp-48] is for y component of wall AB vector
+	; [ebp-52] is for x component of PA vector  (player to A)
+	; [ebp-56] is for y component of PA vector  (player to A) 
+	
+	call wall_loop
 	
 	pop eax
+	pop edx
+	pop ecx
+	
 	mov esp, ebp
 	pop ebp
 	ret
 	
+wall_loop: ;edx is wall counter
+	cmp edx, [numWalls]
+	jge .end_loop
+	
+	
+	xor eax, eax
+	xor ebx, ebx
+	mov eax, [Map+edx*2]
+	mov ebx, [Map+edx*2 + 8]
+	sub ebx, eax
+	mov [ebp-44], ebx
+	
+	xor eax, eax
+	xor ebx, ebx
+	mov eax, [Map+edx*2 + 4]
+	mov ebx, [Map+edx*2 + 12]
+	sub ebx, eax
+	mov [ebp-48], ebx
+	add edx, 1
+.end_loop:
+	ret
+
+ray_per_wall_test: ; returns 0 in rbx if no intersect, returns 1 if yes intersect
 	
 	
 sineTableScale dd -14.0
 
+const2 dd 2
+const90 dd 90
+const320 dd 320
+
+numWalls dd 2
+Map:
+dd -10, 10, -2, 10
+dd 2, 10, 10, 10
+
+lines: times 320 dd 0
 
 %include "main_draw.asm"
 	

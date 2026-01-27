@@ -9,12 +9,21 @@ blastBuffer: ; draws backBuffer onto main vram buffer
 	ret
 	
 drawPixel:
+	push ebp
+	mov ebp, esp
+	sub esp, 32
+	mov [ebp-4], ebx
+	
 	push edx
 	imul edx, 320
 	mov ebx, edx
 	add ebx, ecx
-	mov byte [backBuffer + ebx], 15
+	mov edx, [ebp-4]
+	mov byte [backBuffer + ebx], dl
 	pop edx
+	
+	mov esp, ebp
+	pop ebp
 	ret
 	
 drawPlayer:  ;   drawPlayer( player.x ECX,  player.y EDX ) 

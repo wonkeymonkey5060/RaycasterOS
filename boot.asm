@@ -28,7 +28,7 @@ start:
 
     ; Load Stage 2
     mov ah, 0x02  ;  sets function (read sectors)
-    mov al, 4    ; Number of sectors to load
+    mov al, 8    ; Number of sectors to load
     mov ch, 0    ; set to 0
     mov cl, 2    ; start by loading sector 2
     mov dh, 0    ; set to 0
